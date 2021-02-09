@@ -1,0 +1,113 @@
+### Unity folders & files ###
+[Ll]ibrary/
+!**/[Aa]ssets/**/[Ll]ibrary
+
+[Tt]emp/
+!**/[Aa]ssets/**/[Tt]emp
+
+[Oo]bj/
+!**/[Aa]ssets/**/[Oo]bj
+
+[Ll]ogs/
+!**/[Aa]ssets/**/[Ll]ogs
+
+[Mm]emoryCaptures/
+!**/[Aa]ssets/**/[Mm]emoryCaptures/
+
+UnityGenerated/
+**/[Aa]ssets/AssetStoreTools*
+**/[Aa]ssets/StreamingAssets/crashlytics-build.properties
+
+sysinfo.txt
+crashlytics-build.properties
+
+# *.unitypackage
+
+!**/[Aa]ssets/**/*.meta
+
+# Builds #
+[Bb]uild/
+!**/[Aa]ssets/**/[Bb]uild/
+[Bb]uilds/
+!**/[Aa]ssets/**/[Bb]uilds/
+*.apk
+
+# CWJ #
+CWJ_ProfilingLog.txt
+CWJ_ProfilingLog.txt.meta
+**/CWJ/**/*_ScriptableObject.asset
+**/CWJ/**/*_ScriptableObject.asset.meta
+!**/CWJ/**/CustomDefine_ScriptableObject.asset
+!**/CWJ/**/CustomDefine_ScriptableObject.asset.meta
+!**/CWJ/**/PsMessage_ScriptableObject.asset
+!**/CWJ/**/PsMessage_ScriptableObject.asset.meta
+
+# VR #
+#**/SteamVR/InteractionSystem/Core/Icons.meta
+#**/SteamVR/Input/Editor/Resources/Icons.meta
+
+### Visual Studio / MonoDevelop generated ###
+.gradle/
+.vs/
+**/ExportedObj/
+.consulo/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.pidb.meta
+*.booproj
+*.svd
+*.pdb
+*.pdb.meta
+*.mdb
+*.mdb.meta
+*.opendb
+*.VC.db
+
+### OS ###
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Icon?
+ehthumbs.db
+Thumbs.db
+01.Client/Assets/CWJ/UnityDevTool/CWJ_Setting/DefineSetting/CustomDefine.asset
+01.Client/Assets/CWJ/UnityDevTool/CWJ_Setting/PsMessage/PsMessage.asset
+01.Client/Assets/001_Sprites/Content/Competition/BackGround/img소스/이미지.meta
+01.Client/Assets/001_Sprites/Content/Competition/FigureMemory/6단계.meta
+01.Client/Assets/001_Sprites/ETC/CoSAS_NEW/기억력.meta
+01.Client/Assets/001_Sprites/ETC/CoSAS_NEW/시지각/2_왼쪽점의위치과같은곳.meta
+01.Client/Assets/001_Sprites/ETC/CoSAS_NEW/지남력/0_소방관은누구입니까.meta
+01.Client/Assets/002_Scripts/ContentScripts/Common.meta
+01.Client/Assets/002_Scripts/Result/CoSAS_Result.meta
+01.Client/Assets/002_Scripts/Result/M_Result.meta
+01.Client/Assets/005_Prefabs/Competition/MAKE_FARM.meta
+01.Client/Assets/005_Prefabs/Competition/make_sense.meta
+01.Client/Assets/006_Sound/Main.meta
+01.Client/Assets/AssetBundleBrowser/Editor/Icons.meta
+01.Client/Assets/Barebones/MsfUiSamples/Scripts/Auth.meta
+01.Client/Assets/Editor Default Resources/BuildBundles.meta
+01.Client/Assets/Editor Default Resources/AssetBundle/Sameple/IntroThumbnail.meta
+01.Client/Assets/Editor Default Resources/AssetBundle/Sameple/Sound.meta
+01.Client/Assets/Editor Default Resources/Resource/XML.meta
+01.Client/Assets/LZ4Sharp/LZ4Sharp.csproj.meta
+01.Client/Assets/Plugins/QFSW/Build Automator/Editor/Icons.meta
+01.Client/Assets/Standard Assets/Effects/TessellationShaders/Scenes.meta
+01.Client/Assets/StreamingAssets/BuildBundles.meta
+01.Client/Assets/CWJ/UnityDevTool/CWJ_Setting/DefineSetting/CustomDefine.asset.meta
+01.Client/Assets/CWJ/UnityDevTool/CWJ_Setting/PsMessage/PsMessage.asset.meta
+01.Client/Assets/CWJ/UnityDevTool/SceneHelper/Editor/AutoGenerateSceneEnum_ScriptableObject.asset
+01.Client/Assets/Resources/DOTweenSettings.asset
+01.Client/Assets/CWJ/UnityDevTool/SceneHelper/Editor/AutoGenerateSceneEnum_ScriptableObject.asset.meta
+01.Client/Assets/Resources/DOTweenSettings.asset.meta
+01.Client/Assets/Barebones/MsfUiSamples/Scripts.meta
+01.Client/Assets/Editor Default Resources/AssetBundle/Sameple.meta
+01.Client/ProjectSettings/EditorSettings.asset
+01.Client/Assets/CWJ/UnityDevTool/SceneHelper/SceneEnum.cs
