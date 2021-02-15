@@ -1,5 +1,5 @@
 const Port = 9000;
-const Ip = '127.0.0.1';
+const Ip = '192.168.0.67';
 
 const dgram = require('dgram');
 const server = dgram.createSocket('udp4');
