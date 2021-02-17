@@ -6,6 +6,9 @@ using System.Net;
 using System.Net.Sockets;
 using System.Text;
 using UniRx;
+using System.Net.NetworkInformation;
+using System.Linq;
+using Newtonsoft.Json;
 /// <summary>
 /// Object used for : <see cref="UdpClient.BeginReceive(System.AsyncCallback, object)"/>
 /// Object passed will be returned as parameter with AsyncCallback.
@@ -16,6 +19,14 @@ public struct UdpSenderState
     /// Current device's udp socket used to send message.
     /// </summary>
     public UdpClient socket;
+}
+
+public enum Header { HandShake, Request }
+public class UdpPacket
+{
+    public string Header;
+    public string IpAddress;
+    public DateTime Time;
 }
 
 public static class UdpComm
@@ -56,8 +67,12 @@ public static class UdpComm
             IPAddress endPointIP = IPAddress.Parse(ip);
             remoteEndPoint  = new IPEndPoint(endPointIP, port);
 
+            ///To create different connection, current connection should be disposed.
+            if (socket != null)
+                socket.Close();
+            
             ///creates udp socket on specified port. 
-            ///if no variable was entered, random port will be assigned.
+            ///if no variable was entered instead of 'myPort', random port will be assigned.
             socket = new UdpClient(myPort);
             ///sets destination for udp socket. 
             ///since it's udp, no connection is accually made. 
@@ -79,17 +94,28 @@ public static class UdpComm
         }
         catch(FormatException e)//ipaddress parse error
         {
-            Debug.Log(e.StackTrace);
-            Debug.Log($"[ERROR] invalid ip address : {ip}");
+            Debug.LogError(e.StackTrace);
+            Debug.LogError($"[ERROR] invalid ip address : {ip}");
             
         }
         catch(SocketException e)//socket connection error
         {
-            Debug.Log(e.StackTrace);
-            Debug.Log($"[ERROR] cannot connect to address : {ip}");
+            Debug.LogError(e.StackTrace);
+            Debug.LogError($"[ERROR] cannot connect to address : {ip}");
         }
         return false;
     }
+    
+    public static void SendMessage(Header header)
+    {
+        UdpPacket packet = new UdpPacket();
+        packet.IpAddress = GetLocalAddress().ToString();
+        packet.Header = header.ToString();
+        packet.Time = DateTime.Now;
+
+        SendData(JsonConvert.SerializeObject(packet));
+    }
+
     /// <summary>
     /// Sends message to address predefined on : <see cref="SetTargetEndPoint(string, int)"/>
     /// </summary>
@@ -101,7 +127,10 @@ public static class UdpComm
 
         Debug.Log($"Sending Data : {data}");
 
-        socket.Send(dataInByte, dataInByte.Length);
+        if (socket != null)
+            socket.Send(dataInByte, dataInByte.Length);
+        else
+            Debug.LogError("[Null Ref] Socket is null");
     }
     /// <summary>
     /// Callback for : <see cref="UdpClient.BeginReceive(AsyncCallback, object)"/>.<br/>
@@ -118,11 +147,28 @@ public static class UdpComm
         IPEndPoint remoteSource = new IPEndPoint(0, 0);
 
         byte[] receivedData = socket.EndReceive(result, ref remoteSource);
+
         string message = Encoding.ASCII.GetString(receivedData);
+        
+        try
+        {
+            var json = JsonConvert.DeserializeObject(message);
+        }
+        catch
+        {
+
+        }
 
         Debug.Log($"Received Data : {message}");
 
         receivedMessageHandler.SetValueAndForceNotify(message);
         socket.BeginReceive(OnDataReceived, result.AsyncState);
+    }
+
+    public static IPAddress GetLocalAddress()
+    {
+        var host = Dns.GetHostEntry(Dns.GetHostName());
+        var localAddress = host.AddressList.FirstOrDefault(ip => ip.AddressFamily == AddressFamily.InterNetwork);
+        return localAddress;
     }
 }

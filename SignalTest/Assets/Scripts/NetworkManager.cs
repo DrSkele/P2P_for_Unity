@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UniRx;
+using System;
 
 public class NetworkManager : MonoBehaviour
 {
@@ -14,31 +15,26 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] InputField inputChat = default;
     [SerializeField] Button btnSend = default;
 
-    [SerializeField] Button btnGetPublicIP = default;
-    [SerializeField] Text txtMyPublicIP = default;
+    [SerializeField] Dropdown dropMessage = default;
+    [SerializeField] Button btnSendMessage = default;
 
     private void Start()
     {
-        SetWebSocketConnection();
         btnConnect.OnClickAsObservable().Subscribe(_ => OnButtonConnect());
         btnSend.OnClickAsObservable().Subscribe(_ => OnButtonSend());
-    }
 
-    private void SetWebSocketConnection()
-    {
-        if(WsClient.SetConnection())
+
+        List<Dropdown.OptionData> list = new List<Dropdown.OptionData>();
+        foreach (var name in Enum.GetNames(typeof(Header)))
         {
-            WsClient.RequestToSignalingServer("ip request");
-            btnGetPublicIP.OnClickAsObservable().Subscribe(_ => 
-            { 
-                WsClient.RequestToSignalingServer("ip request"); 
-                txtMyPublicIP.text = $"{WsClient.myPublicIP} : {WsClient.myPublicPort}"; 
-            });
+            Dropdown.OptionData data = new Dropdown.OptionData();
+            data.text = name;
+            list.Add(data);
         }
-        else
-        {
-            //
-        }
+
+        dropMessage.AddOptions(list);
+
+        btnSendMessage.OnClickAsObservable().Subscribe(_ => UdpComm.SendMessage((Header)dropMessage.value));
     }
 
     private void OnButtonConnect()
