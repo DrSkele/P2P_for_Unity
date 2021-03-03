@@ -21,28 +21,22 @@ public struct UdpSenderState
     public UdpClient socket;
 }
 
-public enum Header { HandShake, Request }
+public enum Header { request_handshake, response_handshake, request_list, response_list, ping, pong }
 public class UdpPacket
 {
     public string Header;
-    public string IpAddress;
+    public string Message;
     public DateTime Time;
 }
 
 public static class UdpComm
 {
-    /// <summary>
-    /// Remote end point. Contains ip address and port.
-    /// </summary>
-    static IPEndPoint remoteEndPoint;
+    static IPEndPoint publicIP;
+
     /// <summary>
     /// Current device's udp socket.
     /// </summary>
     static UdpClient socket;
-    /// <summary>
-    /// Port for udp socket.
-    /// </summary>
-    static int myPort = 10000;
     /// <summary>
     /// Observable for received message. Called when receives message.<br/>
     /// Since receiving message is async process, the call is not made on Unity thread.<br/>
@@ -52,6 +46,9 @@ public static class UdpComm
     /// <see cref="OnDataReceived(IAsyncResult)"/>
     /// <remarks>Important : Subscribtion must be made on Main Thread using <see cref="Observable.ObserveOnMainThread{T}(IObservable{T})"/> to avoid unity bug</remarks>
     public static ReactiveProperty<string> receivedMessageHandler;
+
+    public static ReactiveProperty<bool> receivedHandshake;
+    public static ReactiveProperty<bool> receivedList;
 
     /// <summary>
     /// Sets destination ip address and port for udp socket.<br/>
@@ -65,19 +62,18 @@ public static class UdpComm
         try
         {
             IPAddress endPointIP = IPAddress.Parse(ip);
-            remoteEndPoint  = new IPEndPoint(endPointIP, port);
 
             ///To create different connection, current connection should be disposed.
             if (socket != null)
                 socket.Close();
             
             ///creates udp socket on specified port. 
-            ///if no variable was entered instead of 'myPort', random port will be assigned.
-            socket = new UdpClient(myPort);
+            ///if no variable was entered, random port will be assigned.
+            socket = new UdpClient();
             ///sets destination for udp socket. 
             ///since it's udp, no connection is accually made. 
             ///remote end point will be used when sending message.
-            socket.Connect(remoteEndPoint);
+            socket.Connect(new IPEndPoint(endPointIP, port));
 
             ///Creates object for receiving callback.
             ///Inside callback, socket can be used to continue receiving process.
@@ -89,6 +85,7 @@ public static class UdpComm
 
             ///message handler for socket. 
             receivedMessageHandler = new ReactiveProperty<string>(string.Empty);
+            receivedHandshake = new ReactiveProperty<bool>(false);
 
             return true;
         }
@@ -106,14 +103,29 @@ public static class UdpComm
         return false;
     }
     
-    public static void SendMessage(Header header)
+    public static bool SendPacket(Header header)
     {
         UdpPacket packet = new UdpPacket();
-        packet.IpAddress = GetLocalAddress().ToString();
         packet.Header = header.ToString();
+        packet.Message = GetLocalAddress().ToString();
         packet.Time = DateTime.Now;
 
-        SendData(JsonConvert.SerializeObject(packet));
+        if(SendData(JsonConvert.SerializeObject(packet)))
+        {
+            switch(header)
+            {
+                case Header.request_handshake:
+                    {
+                        receivedHandshake.Value = false;
+                        receivedHandshake.AsObservable().Timeout(TimeSpan.FromMilliseconds(1000)).DoOnError(_ => SendPacket(header)).Subscribe(_ => receivedHandshake.Dispose());
+                        break;
+                    }
+            }
+            
+            return true;
+        }
+
+        return false;
     }
 
     /// <summary>
@@ -121,16 +133,20 @@ public static class UdpComm
     /// </summary>
     /// <param name="data"></param>
     /// <remarks>Important : "<see cref="SetTargetEndPoint(string, int)"/>" Must be called before sending message</remarks>
-    public static void SendData(string data)
+    public static bool SendData(string data)
     {
         byte[] dataInByte = Encoding.ASCII.GetBytes(data);
 
         Debug.Log($"Sending Data : {data}");
 
         if (socket != null)
+        {
             socket.Send(dataInByte, dataInByte.Length);
-        else
-            Debug.LogError("[Null Ref] Socket is null");
+            return true;
+        }
+
+        Debug.LogError("[Null Ref] Socket is null");
+        return false;
     }
     /// <summary>
     /// Callback for : <see cref="UdpClient.BeginReceive(AsyncCallback, object)"/>.<br/>
@@ -146,22 +162,46 @@ public static class UdpComm
 
         IPEndPoint remoteSource = new IPEndPoint(0, 0);
 
-        byte[] receivedData = socket.EndReceive(result, ref remoteSource);
+        string receivedData = Encoding.ASCII.GetString(socket.EndReceive(result, ref remoteSource));
 
-        string message = Encoding.ASCII.GetString(receivedData);
-        
         try
         {
-            var json = JsonConvert.DeserializeObject(message);
+            UdpPacket packet = JsonConvert.DeserializeObject<UdpPacket>(receivedData);
+            switch (Enum.Parse(typeof(Header), packet.Header))
+            {
+
+                case Header.response_handshake:
+                    {
+                        string[] message = packet.Message.Split(':');
+                        string ip = message[0];
+                        string port = message[1];
+
+                        publicIP = new IPEndPoint(IPAddress.Parse(ip), int.Parse(port));
+                        break;
+                    }
+                case Header.request_list:
+                    {
+                        break;
+                    }
+                case Header.ping:
+                    {
+                        SendPacket(Header.pong);
+                        break;
+                    }
+                default:
+                    {
+                        break;
+                    }
+            }
         }
         catch
         {
 
         }
 
-        Debug.Log($"Received Data : {message}");
+        Debug.Log($"Received Data : {receivedData}");
 
-        receivedMessageHandler.SetValueAndForceNotify(message);
+        receivedMessageHandler.SetValueAndForceNotify(receivedData);
         socket.BeginReceive(OnDataReceived, result.AsyncState);
     }
 

@@ -2,8 +2,10 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using System.Net;
 using UniRx;
 using System;
+using Newtonsoft.Json;
 
 public class NetworkManager : MonoBehaviour
 {
@@ -34,7 +36,7 @@ public class NetworkManager : MonoBehaviour
 
         dropMessage.AddOptions(list);
 
-        btnSendMessage.OnClickAsObservable().Subscribe(_ => UdpComm.SendMessage((Header)dropMessage.value));
+        btnSendMessage.OnClickAsObservable().Subscribe(_ => UdpComm.SendPacket((Header)dropMessage.value));
     }
 
     private void OnButtonConnect()
@@ -53,4 +55,5 @@ public class NetworkManager : MonoBehaviour
     {
         txtChat.text = txtChat.text + message + "\n";
     }
+
 }
