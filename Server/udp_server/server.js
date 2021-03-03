@@ -52,10 +52,20 @@ server.on('message', function (message, remote) {
             break;
 
         case 'request_list' :
-            clientList.forEach(element => {
-                server.send(element, remote.port, remote.address);
-            });
+            server.send(JSON.stringify({
+                Header : 'response_list',
+                Message : clientList.filter(client => {return client.publicAddress != remote.address}).map(x => `${x.publicAddress}:${x.publicPort}`).join(';'),
+                Time : Date.now()
+            }), remote.port, remote.address);
+        case 'request_connection':
+            var peerAddress = data.Message.split(':')[0];
+            var peerPort = data.Message.split(':')[1];
 
+            server.send(JSON.stringify({
+                Header : 'request_connection',
+                Message : `${peerAddress}:${peerPort}`,
+                Time : Date.now()
+            }), peerPort, peerAddress)
         case 'ping' :
             var liveClient = clientList.find(x => x.publicAddress == publicAddress);
             liveClient.isAlive = true;

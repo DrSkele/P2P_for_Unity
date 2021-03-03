@@ -21,18 +21,8 @@ public struct UdpSenderState
     public UdpClient socket;
 }
 
-public enum Header { request_handshake, response_handshake, request_list, response_list, ping, pong }
-public class UdpPacket
-{
-    public string Header;
-    public string Message;
-    public DateTime Time;
-}
-
 public static class UdpComm
 {
-    static IPEndPoint publicIP;
-
     /// <summary>
     /// Current device's udp socket.
     /// </summary>
@@ -47,8 +37,48 @@ public static class UdpComm
     /// <remarks>Important : Subscribtion must be made on Main Thread using <see cref="Observable.ObserveOnMainThread{T}(IObservable{T})"/> to avoid unity bug</remarks>
     public static ReactiveProperty<string> receivedMessageHandler;
 
-    public static ReactiveProperty<bool> receivedHandshake;
-    public static ReactiveProperty<bool> receivedList;
+    /// <summary>
+    /// Sets destination ip address and port for udp socket.<br/>
+    /// Returns true if connection was successful. otherwise returns false.
+    /// </summary>
+    /// <param name="ip">IPEndPoint sending message to. </param>
+    /// <remarks>Important : Must be called before sending message</remarks>
+    public static bool SetTargetEndPoint(IPEndPoint ip)
+    {
+        try
+        {
+            ///To create different connection, current connection should be disposed.
+            if (socket != null)
+                socket.Close();
+
+            ///creates udp socket on specified port. 
+            ///if no variable was entered, random port will be assigned.
+            socket = new UdpClient();
+            ///sets destination for udp socket. 
+            ///since it's udp, no connection is accually made. 
+            ///remote end point will be used when sending message.
+            socket.Connect(ip);
+
+            ///Creates object for receiving callback.
+            ///Inside callback, socket can be used to continue receiving process.
+            UdpSenderState sendState = new UdpSenderState();
+            sendState.socket = socket;
+
+            ///Wait for message to be received.
+            socket.BeginReceive(OnDataReceived, sendState);
+
+            ///message handler for socket. 
+            receivedMessageHandler = new ReactiveProperty<string>(string.Empty);
+
+            return true;
+        }
+        catch (SocketException e)//socket connection error
+        {
+            Debug.LogError(e.StackTrace);
+            Debug.LogError($"[ERROR] cannot connect to address : {ip}");
+        }
+        return false;
+    }
 
     /// <summary>
     /// Sets destination ip address and port for udp socket.<br/>
@@ -61,33 +91,9 @@ public static class UdpComm
     {
         try
         {
-            IPAddress endPointIP = IPAddress.Parse(ip);
+            IPEndPoint endPointIP = new IPEndPoint(IPAddress.Parse(ip), port);
 
-            ///To create different connection, current connection should be disposed.
-            if (socket != null)
-                socket.Close();
-            
-            ///creates udp socket on specified port. 
-            ///if no variable was entered, random port will be assigned.
-            socket = new UdpClient();
-            ///sets destination for udp socket. 
-            ///since it's udp, no connection is accually made. 
-            ///remote end point will be used when sending message.
-            socket.Connect(new IPEndPoint(endPointIP, port));
-
-            ///Creates object for receiving callback.
-            ///Inside callback, socket can be used to continue receiving process.
-            UdpSenderState sendState = new UdpSenderState();
-            sendState.socket = socket;
-
-            ///Wait for message to be received.
-            socket.BeginReceive(OnDataReceived, sendState);
-
-            ///message handler for socket. 
-            receivedMessageHandler = new ReactiveProperty<string>(string.Empty);
-            receivedHandshake = new ReactiveProperty<bool>(false);
-
-            return true;
+            return SetTargetEndPoint(endPointIP);
         }
         catch(FormatException e)//ipaddress parse error
         {
@@ -95,39 +101,9 @@ public static class UdpComm
             Debug.LogError($"[ERROR] invalid ip address : {ip}");
             
         }
-        catch(SocketException e)//socket connection error
-        {
-            Debug.LogError(e.StackTrace);
-            Debug.LogError($"[ERROR] cannot connect to address : {ip}");
-        }
         return false;
     }
     
-    public static bool SendPacket(Header header)
-    {
-        UdpPacket packet = new UdpPacket();
-        packet.Header = header.ToString();
-        packet.Message = GetLocalAddress().ToString();
-        packet.Time = DateTime.Now;
-
-        if(SendData(JsonConvert.SerializeObject(packet)))
-        {
-            switch(header)
-            {
-                case Header.request_handshake:
-                    {
-                        receivedHandshake.Value = false;
-                        receivedHandshake.AsObservable().Timeout(TimeSpan.FromMilliseconds(1000)).DoOnError(_ => SendPacket(header)).Subscribe(_ => receivedHandshake.Dispose());
-                        break;
-                    }
-            }
-            
-            return true;
-        }
-
-        return false;
-    }
-
     /// <summary>
     /// Sends message to address predefined on : <see cref="SetTargetEndPoint(string, int)"/>
     /// </summary>
@@ -163,41 +139,6 @@ public static class UdpComm
         IPEndPoint remoteSource = new IPEndPoint(0, 0);
 
         string receivedData = Encoding.ASCII.GetString(socket.EndReceive(result, ref remoteSource));
-
-        try
-        {
-            UdpPacket packet = JsonConvert.DeserializeObject<UdpPacket>(receivedData);
-            switch (Enum.Parse(typeof(Header), packet.Header))
-            {
-
-                case Header.response_handshake:
-                    {
-                        string[] message = packet.Message.Split(':');
-                        string ip = message[0];
-                        string port = message[1];
-
-                        publicIP = new IPEndPoint(IPAddress.Parse(ip), int.Parse(port));
-                        break;
-                    }
-                case Header.request_list:
-                    {
-                        break;
-                    }
-                case Header.ping:
-                    {
-                        SendPacket(Header.pong);
-                        break;
-                    }
-                default:
-                    {
-                        break;
-                    }
-            }
-        }
-        catch
-        {
-
-        }
 
         Debug.Log($"Received Data : {receivedData}");
 
