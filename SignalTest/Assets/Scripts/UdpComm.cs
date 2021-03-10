@@ -52,7 +52,7 @@ public static class UdpComm
                 socket.Close();
 
             ///creates udp socket on specified port. 
-            ///if no variable was entered, random port will be assigned.
+            ///if no variable was entered in UdpClient, random port will be assigned.
             socket = new UdpClient();
             ///sets destination for udp socket. 
             ///since it's udp, no connection is accually made. 
@@ -109,7 +109,7 @@ public static class UdpComm
     /// </summary>
     /// <param name="data"></param>
     /// <remarks>Important : "<see cref="SetTargetEndPoint(string, int)"/>" Must be called before sending message</remarks>
-    public static bool SendData(string data)
+    public static void SendData(string data)
     {
         byte[] dataInByte = Encoding.ASCII.GetBytes(data);
 
@@ -118,11 +118,9 @@ public static class UdpComm
         if (socket != null)
         {
             socket.Send(dataInByte, dataInByte.Length);
-            return true;
         }
 
         Debug.LogError("[Null Ref] Socket is null");
-        return false;
     }
     /// <summary>
     /// Callback for : <see cref="UdpClient.BeginReceive(AsyncCallback, object)"/>.<br/>

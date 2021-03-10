@@ -36,7 +36,27 @@ public class NetworkManager : MonoBehaviour
 
         dropMessage.AddOptions(list);
 
-        btnSendMessage.OnClickAsObservable().Subscribe(_ => UdpComm.SendPacket((Header)dropMessage.value));
+        //btnSendMessage.OnClickAsObservable().Subscribe(_ => NetworkHandler.SendPacket((Header)dropMessage.value));
+
+        
+
+        Test();
+    }
+
+    private void Test()
+    {
+        var mouseDown = Observable.EveryUpdate().Where(_ => Input.GetMouseButtonDown(0));
+        var repeater = Observable.Timer(TimeSpan.FromMilliseconds(1000))
+            .RepeatUntilDestroy(this)
+            .Repeat()
+            .Take(10)
+            .DoOnCompleted(() => Debug.Log("completed"));
+
+        Debug.Log("test");
+        Observable.TimeInterval(repeater)
+            .TakeUntilDestroy(this)
+            .TakeUntil(mouseDown)
+            .Subscribe(_ => Debug.Log("onnext"), e => Debug.Log("error"), () => Debug.Log("on complete"));
     }
 
     private void OnButtonConnect()
@@ -55,5 +75,8 @@ public class NetworkManager : MonoBehaviour
     {
         txtChat.text = txtChat.text + message + "\n";
     }
+
+
+
 
 }

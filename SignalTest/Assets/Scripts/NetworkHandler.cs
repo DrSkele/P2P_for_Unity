@@ -15,143 +15,198 @@ public enum Header {
     ping, pong }
 public class UdpPacket
 {
-    public string Header;
+    public Header Header;
     public string Message;
     public DateTime Time;
+
+    public UdpPacket()
+    {
+        Message = "";
+        Time = DateTime.Now;
+    }
+}
+
+public class IPPair
+{
+    public IPAddress PublicIP;
+    public IPAddress LocalIP;
+    public int Port;
+
+    public IPEndPoint GetPublicIPEndPoint()
+    {
+        return new IPEndPoint(PublicIP, Port);
+    }
+
+    public IPEndPoint GetLocalIPEndPoint()
+    {
+        return new IPEndPoint(LocalIP, Port);
+    }
 }
 
 public class NetworkHandler : MonoBehaviour
 {
+    private IPPair myIP;
 
-    private string serverIP = "127.0.0.1";
-    private int serverPort = 9000;
+    private List<IPPair> peerIPList = new List<IPPair>();
+    private IPPair peerIP;
 
-
-    private IPEndPoint publicIP;
-
-    private List<IPEndPoint> peerIpList = new List<IPEndPoint>();
-    private IPEndPoint peerIp;
 
     private void Start()
     {
-        UdpComm.receivedMessageHandler.AsObservable().ObserveOnMainThread().Subscribe(ProcessMessage);
+        //UdpComm.receivedMessageHandler.AsObservable().ObserveOnMainThread().Subscribe(ProcessMessage);
         
+        var dataStream = UdpComm.receivedMessageHandler.Select(receivedData => JsonConvert.DeserializeObject<UdpPacket>(receivedData)).DoOnError(e => Debug.Log(e.StackTrace));
+        
+        dataStream.Where(data => data.Header == Header.response_handshake).Subscribe(data => OnResponseHandshake(data));
+        dataStream.Where(data => data.Header == Header.response_list).Subscribe(data => OnResponseList(data));
+        
+        dataStream.Where(data => data.Header == Header.request_connection).Subscribe(data => OnRequestConnection(data));
+        dataStream.Where(data => data.Header == Header.ping).Subscribe(data => OnPing(data));
 
     }
 
-    private void SignalingProcess()
+    public static void SendPacket(UdpPacket packet)
     {
-        UdpComm.SetTargetEndPoint(serverIP, serverPort);
-        SendPacket(Header.request_handshake);
+        UdpComm.SendData(JsonConvert.SerializeObject(packet));
     }
 
+    private void SendRequest(UdpPacket packet, Header response)
+    {
+        //Check for incoming message containing response for request.
+        var responseReceived = UdpComm.receivedMessageHandler
+            .Select(message => JsonConvert.DeserializeObject<UdpPacket>(message).Header)
+            .Where(messageHeader => messageHeader == response);
 
-    public static bool SendPacket(Header header)
+        var repeater = Observable.Timer(TimeSpan.FromMilliseconds(300)).Repeat().Take(10);
+
+        // If timer ends without meeting TakeUntil condition, send the packet again.
+        //When 'responseReceived' event is called, OnCompleted will be called and subscription will end. 
+        Observable.TimeInterval(repeater)
+            .TakeUntil(responseReceived)
+            .Subscribe(_ => SendPacket(packet));
+    }
+    /// <summary>
+    /// Ask signaling server for registeration of current device's public ip address to connectable peer list and return it.
+    /// </summary>
+    private void RequestHandshake()
     {
         UdpPacket packet = new UdpPacket();
-        
-        switch (header)
-        {
-            case Header.request_handshake:
-                {
-                    packet.Message = UdpComm.GetLocalAddress().ToString();
-                    break;
-                }
-            case Header.request_list:
-                {
-                    packet.Message = UdpComm.GetLocalAddress().ToString();
-                    break;
-                }
-            case Header.response_connection:
-                {
-                    packet.Message = "";
-                    break;
-                }
-            default:
-                {
-                    packet.Message = "";
-                    break;
-                }
-        }
-        packet.Header = header.ToString();
-        packet.Time = DateTime.Now;
+        packet.Header = Header.request_handshake;
+        packet.Message = $"";
 
-        return UdpComm.SendData(JsonConvert.SerializeObject(packet));
+        SendRequest(packet, Header.response_handshake);
     }
+    /// <summary>
+    /// Response for <see cref="RequestHandshake"/><br/>
+    /// Receives public ip address of this device and store it.
+    /// Upon successful handshake, requests for connectable peer list that server has.
+    /// </summary>
+    private void OnResponseHandshake(UdpPacket packet)
+    {
+        myIP = JsonConvert.DeserializeObject<IPPair>(packet.Message);
 
-    public static bool RequestConnection(IPEndPoint ip)
+        RequestList();
+    }
+    /// <summary>
+    /// Ask signaling server for connectable peer list.
+    /// </summary>
+    private void RequestList()
     {
         UdpPacket packet = new UdpPacket();
-        packet.Header = Header.request_connection.ToString();
-        packet.Message = $"{ip.Address}:{ip.Port}";
-        packet.Time = DateTime.Now;
+        packet.Header = Header.request_list;
+        packet.Message = $"";
 
-        return UdpComm.SendData(JsonConvert.SerializeObject(packet));
+        SendRequest(packet, Header.response_list);
+    }
+    /// <summary>
+    /// Response for <see cref="RequestList"/><br/>
+    /// 
+    /// </summary>
+    private void OnResponseList(UdpPacket packet)
+    {
+        peerIPList.Clear();
+        List<IPPair> peerList = JsonConvert.DeserializeObject<List<IPPair>>(packet.Message);
+        foreach (var peer in peerList)
+        {
+            if (!peerIPList.Contains(peer))
+                peerIPList.Add(peer);
+        }
     }
 
-
-    private void ProcessMessage(string receivedData)
+    public void RequestConnection(IPEndPoint ip)
     {
-        try
-        {
-            UdpPacket packet = JsonConvert.DeserializeObject<UdpPacket>(receivedData);
-            switch (Enum.Parse(typeof(Header), packet.Header))
-            {
+        UdpPacket packet = new UdpPacket();
+        packet.Header = Header.request_connection;
+        packet.Message = JsonConvert.SerializeObject(myIP);
 
-                case Header.response_handshake:
-                    {
-                        string[] message = packet.Message.Split(':');
-                        string ip = message[0];
-                        string port = message[1];
+        SendRequest(packet, Header.response_connection);
+    }
 
-                        publicIP = new IPEndPoint(IPAddress.Parse(ip), int.Parse(port));
-                        SendPacket(Header.request_list);
-                        break;
-                    }
-                case Header.response_list:
-                    {
-                        peerIpList.Clear();
-                        string[] message = packet.Message.Split(';');
-                        foreach (var address in message)
-                        {
-                            string ip = message[0];
-                            string port = message[1];
+    private void OnRequestConnection(UdpPacket packet)
+    {
+        peerIP = JsonConvert.DeserializeObject<IPPair>(packet.Message);
 
-                            IPEndPoint peerIp = new IPEndPoint(IPAddress.Parse(ip), int.Parse(port));
+        ResponseConnection();
 
-                            if(!peerIpList.Contains(peerIp))
-                                peerIpList.Add(peerIp);
-                        }
+        UdpComm.SetTargetEndPoint(peerIP.GetPublicIPEndPoint());
 
-                        break;
-                    }
-                case Header.request_connection:
-                    {
-                        string[] message = packet.Message.Split(':');
-                        string ip = message[0];
-                        string port = message[1];
+        RequestPeerHandshake();
+    }
 
-                        peerIp = new IPEndPoint(IPAddress.Parse(ip), int.Parse(port));
-                        UdpComm.SetTargetEndPoint(peerIp);
-                        SendPacket(Header.response_connection);
-                        //SendPacket(Header.ping);
-                        break;
-                    }
-                case Header.ping:
-                    {
-                        SendPacket(Header.pong);
-                        break;
-                    }
-                default:
-                    {
-                        break;
-                    }
-            }
-        }
-        catch
-        {
+    private void ResponseConnection()
+    {
+        UdpPacket packet = new UdpPacket();
+        packet.Header = Header.response_connection;
+        packet.Message = $"";
 
-        }
+        SendPacket(packet);
+    }
+
+    private void OnResponseConnection(UdpPacket packet)
+    {
+        peerIP = JsonConvert.DeserializeObject<IPPair>(packet.Message);
+
+        UdpComm.SetTargetEndPoint(peerIP.GetPublicIPEndPoint());
+
+        RequestPeerHandshake();
+    }
+
+    private void RequestPeerHandshake()
+    {
+        UdpPacket packet = new UdpPacket();
+        packet.Header = Header.request_peer_handshake;
+        packet.Message = $"";
+
+        SendRequest(packet, Header.response_peer_handshake);
+    }
+
+    private void OnRequestPeerHandshake(UdpPacket packet)
+    {
+        ResponsePeerHandshake();
+    }
+
+    private void ResponsePeerHandshake()
+    {
+        UdpPacket packet = new UdpPacket();
+        packet.Header = Header.response_connection;
+        packet.Message = $"";
+
+        SendPacket(packet);
+    }
+
+    private void OnResponsePeerHandshake(UdpPacket packet)
+    {
+        Ping();
+    }
+
+    private void Ping()
+    {
+
+    }
+
+    private void OnPing(UdpPacket packet)
+    {
+
     }
 
     private IEnumerator pingpong()
