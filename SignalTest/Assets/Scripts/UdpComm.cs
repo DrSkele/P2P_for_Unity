@@ -21,6 +21,48 @@ public struct UdpSenderState
     public UdpClient socket;
 }
 
+public class UdpPacket
+{
+    public Header Header;
+    public string Payload;
+    public DateTime Time;
+
+    public UdpPacket()
+    {
+        Header = Header.none;
+        Payload = "";
+        Time = DateTime.Now;
+    }
+
+    public UdpPacket(Header header)
+    {
+        Header = header;
+        Payload = "";
+        Time = DateTime.Now;
+    }
+
+    public UdpPacket(Header header, string payload)
+    {
+        Header = header;
+        Payload = payload;
+        Time = DateTime.Now;
+    }
+}
+
+public class UdpMessage
+{
+    public UdpPacket packet;
+    public IPEndPoint ipEndPoint;
+
+    public UdpMessage() { }
+
+    public UdpMessage(UdpPacket receivedPacket, IPEndPoint endPoint)
+    {
+        packet = receivedPacket;
+        ipEndPoint = endPoint;
+    }
+}
+
 public static class UdpComm
 {
     /// <summary>
@@ -35,7 +77,7 @@ public static class UdpComm
     /// </summary>
     /// <see cref="OnDataReceived(IAsyncResult)"/>
     /// <remarks>Important : Subscribtion must be made on Main Thread using <see cref="Observable.ObserveOnMainThread{T}(IObservable{T})"/> to avoid unity bug</remarks>
-    public static ReactiveProperty<string> receivedMessageHandler;
+    public static ReactiveProperty<UdpMessage> receivedMessageHandler;
 
     /// <summary>
     /// Sets destination ip address and port for udp socket.<br/>
@@ -43,7 +85,7 @@ public static class UdpComm
     /// </summary>
     /// <param name="ip">IPEndPoint sending message to. </param>
     /// <remarks>Important : Must be called before sending message</remarks>
-    public static bool SetTargetEndPoint(IPEndPoint ip)
+    public static bool SetUdpSocket()
     {
         try
         {
@@ -57,7 +99,7 @@ public static class UdpComm
             ///sets destination for udp socket. 
             ///since it's udp, no connection is accually made. 
             ///remote end point will be used when sending message.
-            socket.Connect(ip);
+            //socket.Connect(ip);
 
             ///Creates object for receiving callback.
             ///Inside callback, socket can be used to continue receiving process.
@@ -68,38 +110,13 @@ public static class UdpComm
             socket.BeginReceive(OnDataReceived, sendState);
 
             ///message handler for socket. 
-            receivedMessageHandler = new ReactiveProperty<string>(string.Empty);
+            receivedMessageHandler = new ReactiveProperty<UdpMessage>(new UdpMessage());
 
             return true;
         }
         catch (SocketException e)//socket connection error
         {
             Debug.LogError(e.StackTrace);
-            Debug.LogError($"[ERROR] cannot connect to address : {ip}");
-        }
-        return false;
-    }
-
-    /// <summary>
-    /// Sets destination ip address and port for udp socket.<br/>
-    /// Returns true if connection was successful. otherwise returns false.
-    /// </summary>
-    /// <param name="ip">IP address sending message to. ex) 192.168.0.12 </param>
-    /// <param name="port">Port of IP address sending message to.</param>
-    /// <remarks>Important : Must be called before sending message</remarks>
-    public static bool SetTargetEndPoint(string ip, int port)
-    {
-        try
-        {
-            IPEndPoint endPointIP = new IPEndPoint(IPAddress.Parse(ip), port);
-
-            return SetTargetEndPoint(endPointIP);
-        }
-        catch(FormatException e)//ipaddress parse error
-        {
-            Debug.LogError(e.StackTrace);
-            Debug.LogError($"[ERROR] invalid ip address : {ip}");
-            
         }
         return false;
     }
@@ -109,7 +126,7 @@ public static class UdpComm
     /// </summary>
     /// <param name="data"></param>
     /// <remarks>Important : "<see cref="SetTargetEndPoint(string, int)"/>" Must be called before sending message</remarks>
-    public static void SendData(string data)
+    public static void SendData(string data, IPEndPoint receiver)
     {
         byte[] dataInByte = Encoding.ASCII.GetBytes(data);
 
@@ -117,7 +134,7 @@ public static class UdpComm
 
         if (socket != null)
         {
-            socket.Send(dataInByte, dataInByte.Length);
+            socket.Send(dataInByte, dataInByte.Length, receiver);
         }
 
         Debug.LogError("[Null Ref] Socket is null");
@@ -140,7 +157,20 @@ public static class UdpComm
 
         Debug.Log($"Received Data : {receivedData}");
 
-        receivedMessageHandler.SetValueAndForceNotify(receivedData);
+        UdpPacket receivedPacket;
+
+        try
+        {
+            receivedPacket = JsonConvert.DeserializeObject<UdpPacket>(receivedData);
+        }
+        catch
+        {
+            receivedPacket = new UdpPacket(Header.none, receivedData);
+        }
+
+        UdpMessage receivedMessage = new UdpMessage(receivedPacket, remoteSource);
+
+        receivedMessageHandler.SetValueAndForceNotify(receivedMessage);
         socket.BeginReceive(OnDataReceived, result.AsyncState);
     }
 

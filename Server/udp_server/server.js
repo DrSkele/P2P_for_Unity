@@ -7,11 +7,25 @@ const server = dgram.createSocket('udp4');
 var clientList = [];
 
 class Client{
-    constructor(localIP, publicAddress, publicPort){
-        this.localIP = localIP;
-        this.publicAddress = publicAddress;
-        this.publicPort = publicPort;
+    constructor(clientIPPair){
+        this.IPPair = clientIPPair;
         this.isAlive = true;
+    }
+}
+
+class IPPair{
+    constructor(LocalIP, PublicIP, Port){
+        this.LocalIP = LocalIP;
+        this.PublicIP = PublicIP;
+        this.Port = Port;
+    }
+}
+
+class UdpPacket{
+    constructor(Header, Payload){
+        this.Header = Header;
+        this.Payload = Payload;
+        this.Time = Date.Time.now;
     }
 }
 
@@ -20,60 +34,107 @@ server.on('listening', function () {
     console.log(`server listening on ${address.address} : ${address.port}`);
 })
 
-server.on('message', function (message, remote) {
+server.on('message', function (receivedPacket, remote) {
     
-    var publicAddress = remote.address;
-    var publicPort = remote.port;
+    var remotePublicIP = remote.address;
+    var remotePublicPort = remote.port;
 
-    var data = JSON.parse(message);
+    try{
+        
+        var jsonPacket = JSON.parse(receivedPacket);
+        //UdpPacket
+        //{
+        //  Header : 
+        //  Payload :
+        //  Time   :    
+        //}
 
-    console.log(data);
+        console.log(jsonPacket);
 
-    switch(data.Header) {
-        case 'request_handshake':
-            //Message format : 'ipaddress:port'
-            var localIP = data.Message;
+        switch(jsonPacket.Header) {
+            case 'request_handshake':
+                var receivedIPPair = JSON.parse(jsonPacket.Payload);
+                //IPPair
+                //{
+                //  LocalIP : 
+                //  PublicIP :
+                //  Port   :    
+                //}
+                var remoteLocalIP = receivedIPPair.LocalIP;
+                var clientIPPair = new IPPair(remoteLocalIP, remotePublicIP, remotePublicPort);
 
-            var hasDuplicate = false;
-            for(var i = 0; i <clientList.length; i++) {
-                if(clientList[i].IpAddress == data.IpAddress){
-                    hasDuplicate = true;
-                    break;
+                var hasDuplicate = false;
+                clientList.forEach(client => {
+                    if(client.IPPair.PublicIP == remotePublicIP){
+                        hasDuplicate = true;
+                        break;
+                    }
+                });
+                if(!hasDuplicate) {
+                    clientList.push(new Client(clientIPPair));
                 }
-            }
-            if(!hasDuplicate) {
-                clientList.push(new Client(localIP, publicAddress, publicPort));
-            }
-            server.send(JSON.stringify({
-                Header : 'response_handshake',
-                Message : `${publicAddress}:${publicPort}`,
-                Time : Date.now()
-            }), remote.port, remote.address);
-            break;
+                server.send(
+                    JSON.stringify(
+                        new UdpPacket(
+                            'response_handshake', 
+                            JSON.stringify(clientIPPair)
+                        )
+                    ), remote.port, remote.address
+                );
+                break;
+            case 'request_list' :
+                server.send(
+                    JSON.stringify(
+                        new UdpPacket(
+                            'response_list',
+                            JSON.stringify(
+                                clientList
+                                .filter(client => { return client.publicIP != remotePublicIP })
+                                .map(peer => JSON.stringify(new IPPair(peer.IPPair.LocalIP, peer.IPPair.PublicIP, peer.IPPair.Port)))
+                            ),
+                        )
+                    ), remote.port, remote.address
+                );
+            case 'request_connection':
+                var receivedIPPair = JSON.parse(jsonPacket.Payload);
 
-        case 'request_list' :
-            server.send(JSON.stringify({
-                Header : 'response_list',
-                Message : clientList.filter(client => {return client.publicAddress != remote.address}).map(x => `${x.publicAddress}:${x.publicPort}`).join(';'),
-                Time : Date.now()
-            }), remote.port, remote.address);
-        case 'request_connection':
-            var peerAddress = data.Message.split(':')[0];
-            var peerPort = data.Message.split(':')[1];
+                server.send(
+                    JSON.stringify(
+                        new UdpPacket(
+                            'request_connection', 
+                            clientList.find(client => client.IPPair.PublicIP == remotePublicIP)
+                        )
+                    ), receivedIPPair.Port, receivedIPPair.PublicIP
+                )
+            case 'response_connection':
+                var receivedIPPair = JSON.parse(jsonPacket.Payload);
 
-            server.send(JSON.stringify({
-                Header : 'request_connection',
-                Message : `${peerAddress}:${peerPort}`,
-                Time : Date.now()
-            }), peerPort, peerAddress)
-        case 'ping' :
-            var liveClient = clientList.find(x => x.publicAddress == publicAddress);
-            liveClient.isAlive = true;
-            break;
-        default :
-            server.send(`${publicAddress}:${publicPort}`, remote.port, remote.address);
-            
-    }    
+                server.send(
+                    JSON.stringify(
+                        new UdpPacket(
+                            'response_connection', 
+                            clientList.find(client => client.IPPair.PublicIP == remotePublicIP)
+                        )
+                    ), receivedIPPair.Port, receivedIPPair.PublicIP
+                )
+            case 'pong' :
+                var liveClient = clientList.find(x => x.publicAddress == remotePublicIP);
+                liveClient.isAlive = true;
+                break;
+            default :
+                server.send(JSON.stringify(
+                    new UdpPacket(
+                        'none', 
+                        receivedPacket
+                    )
+                ), remote.port, remote.address);
+                
+        }    
+    }
+    catch
+    {
+        server.send(`${remotePublicIP}:${remotePublicPort}`, remote.port, remote.address);
+    }
 })
 
 server.on('error', function (error) {
@@ -95,8 +156,10 @@ const interval = setInterval(function ping() {
     clientList.forEach(client => {
         client.isAlive = false;
         console.debug(client.publicPort);
-        server.send(JSON.stringify({
-            Header : 'ping',
-        }), client.publicPort, client.publicAddress);
+        server.send(
+            JSON.stringify(
+                new UdpPacket('ping', '')
+            ), client.publicPort, client.publicAddress
+        );
     });
 }, 30000);

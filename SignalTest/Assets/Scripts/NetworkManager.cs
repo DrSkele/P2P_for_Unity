@@ -38,7 +38,7 @@ public class NetworkManager : MonoBehaviour
 
         //btnSendMessage.OnClickAsObservable().Subscribe(_ => NetworkHandler.SendPacket((Header)dropMessage.value));
 
-        
+        UdpComm.SetUdpSocket();
 
         Test();
     }
@@ -52,31 +52,29 @@ public class NetworkManager : MonoBehaviour
             .Take(10)
             .DoOnCompleted(() => Debug.Log("completed"));
 
-        Debug.Log("test");
         Observable.TimeInterval(repeater)
             .TakeUntilDestroy(this)
             .TakeUntil(mouseDown)
             .Subscribe(_ => Debug.Log("onnext"), e => Debug.Log("error"), () => Debug.Log("on complete"));
+
+        repeater.Buffer(10).Subscribe(_ => Debug.Log("Time out"));
+
+        repeater.Zip(Observable.Range(1, 5), (number, counter) => counter).Subscribe(counter => Debug.Log($"number : {counter}"));
     }
 
     private void OnButtonConnect()
     {
-        UdpComm.SetTargetEndPoint(inputIP.text, int.Parse(inputPort.text));
         ///Since receivedMessageHandler call is not made on Unity thread, process involving unity property cause error.
-        UdpComm.receivedMessageHandler.AsObservable().ObserveOnMainThread().Subscribe(x => ShowMessage(x));
+        UdpComm.receivedMessageHandler.AsObservable().ObserveOnMainThread().Subscribe(x => ShowMessage(x.packet.Payload));
     }
 
     private void OnButtonSend()
     {
-        UdpComm.SendData(inputChat.text);
+        UdpComm.SendData(inputChat.text, new IPEndPoint(IPAddress.Parse(inputIP.text), int.Parse(inputPort.text)));
     }
 
     private void ShowMessage(string message)
     {
         txtChat.text = txtChat.text + message + "\n";
     }
-
-
-
-
 }
