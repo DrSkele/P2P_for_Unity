@@ -14,8 +14,10 @@ public class NetworkManager : MonoBehaviour
     [SerializeField] Button btnConnect = default;
 
     [SerializeField] Text txtChat = default;
-    [SerializeField] InputField inputChat = default;
-    [SerializeField] Button btnSend = default;
+
+    [SerializeField] InputField inputPeerIP = default;
+    [SerializeField] InputField inputPeerPort = default;
+    [SerializeField] Button btnPeerConnect = default;
 
     [SerializeField] Dropdown dropMessage = default;
     [SerializeField] Button btnSendMessage = default;
@@ -23,7 +25,7 @@ public class NetworkManager : MonoBehaviour
     private void Start()
     {
         btnConnect.OnClickAsObservable().Subscribe(_ => OnButtonConnect());
-        btnSend.OnClickAsObservable().Subscribe(_ => OnButtonSend());
+        btnPeerConnect.OnClickAsObservable().Subscribe(_ => OnButtonPeerConnect());
 
 
         List<Dropdown.OptionData> list = new List<Dropdown.OptionData>();
@@ -38,9 +40,7 @@ public class NetworkManager : MonoBehaviour
 
         //btnSendMessage.OnClickAsObservable().Subscribe(_ => NetworkHandler.SendPacket((Header)dropMessage.value));
 
-        UdpComm.SetUdpSocket();
-
-        Test();
+        //Test();
     }
 
     private void Test()
@@ -65,16 +65,22 @@ public class NetworkManager : MonoBehaviour
     private void OnButtonConnect()
     {
         ///Since receivedMessageHandler call is not made on Unity thread, process involving unity property cause error.
-        UdpComm.receivedMessageHandler.AsObservable().ObserveOnMainThread().Subscribe(x => ShowMessage(x.packet.Payload));
+        UdpComm.receivedMessageHandler
+            .AsObservable()
+            .ObserveOnMainThread()
+            .Subscribe(x => ShowMessage($"{JsonConvert.SerializeObject(x.packet)} from ${x.ipEndPoint.Address} : ${x.ipEndPoint.Port}"));
+
+        NetworkHandler.Instance.RequestHandshake();
     }
 
-    private void OnButtonSend()
+    private void OnButtonPeerConnect()
     {
-        UdpComm.SendData(inputChat.text, new IPEndPoint(IPAddress.Parse(inputIP.text), int.Parse(inputPort.text)));
+        NetworkHandler.Instance.RequestConnection(new IPEndPoint(IPAddress.Parse(inputPeerIP.text), int.Parse(inputPeerPort.text)));
     }
 
     private void ShowMessage(string message)
     {
+        Debug.LogError(message);
         txtChat.text = txtChat.text + message + "\n";
     }
 }
