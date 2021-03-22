@@ -84,17 +84,24 @@ public static class UdpComm
         {
             if (_socket == null)
             {
-                ///creates udp socket on specified port. 
-                ///if no variable was entered in UdpClient, random port will be assigned.
-                _socket = new UdpClient();
+                try
+                {
+                    ///creates udp socket on specified port. 
+                    ///if no variable was entered in UdpClient, random port will be assigned.
+                    _socket = new UdpClient(10000);
 
-                ///Creates object for receiving callback.
-                ///Inside callback, socket can be used to continue receiving process.
-                UdpSenderState sendState = new UdpSenderState();
-                sendState.socket = _socket;
+                    ///Creates object for receiving callback.
+                    ///Inside callback, socket can be used to continue receiving process.
+                    UdpSenderState sendState = new UdpSenderState();
+                    sendState.socket = _socket;
 
-                ///Wait for message to be received.
-                _socket.BeginReceive(OnDataReceived, sendState);
+                    ///Wait for message to be received.
+                    _socket.BeginReceive(OnDataReceived, sendState);
+                }
+                catch
+                {
+                    return null;
+                }
             }
             return _socket;
         }
@@ -118,11 +125,24 @@ public static class UdpComm
             return _receivedMessageHandler;
         }
     }
+
+    static ReactiveProperty<string> _sendingMessageNotifier;
+
+    public static ReactiveProperty<string> sendingMessageNotifier
+    {
+        get
+        {
+            if (_sendingMessageNotifier == null)
+                _sendingMessageNotifier = new ReactiveProperty<string>("");
+            return _sendingMessageNotifier;
+        }
+    }
     
     public static void CloseConnection()
     {
         socket.Close();
         receivedMessageHandler.Dispose();
+        sendingMessageNotifier.Dispose();
     }
 
     /// <summary>
@@ -138,7 +158,16 @@ public static class UdpComm
 
         if (socket != null)
         {
-            socket.Send(dataInByte, dataInByte.Length, receiver);
+            try
+            {
+                socket.Connect(receiver);
+                socket.Send(dataInByte, dataInByte.Length);
+                sendingMessageNotifier.SetValueAndForceNotify($"SENDING TO {receiver.Address} : {receiver.Port}\n{data} ");
+            }
+            catch(Exception e)
+            {
+                Debug.LogError(e);
+            }
         }
         else
         {

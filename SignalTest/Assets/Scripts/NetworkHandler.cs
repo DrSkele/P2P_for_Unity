@@ -57,7 +57,8 @@ public enum Header {
     /// <remarks>FROM peer ONLY.</remarks>
     response_peer_handshake,
     ping, 
-    pong 
+    pong,
+    request_disconnection
 }
 
 public enum ConnectionError
@@ -118,6 +119,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
 
     private void OnDestroy()
     {
+        RequestDisconnection();
         UdpComm.CloseConnection();
     }
 
@@ -141,7 +143,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
             .Subscribe(message => OnResponseConnection(message.packet));
 
         dataStream.Where(message => message.packet.GetHeader() == Header.request_peer_handshake)
-            .Subscribe(message => OnRequestPeerHandshake(message.packet));
+            .Subscribe(message => OnRequestPeerHandshake(message.ipEndPoint));
 
         dataStream.Where(message => message.packet.GetHeader() == Header.response_peer_handshake)
             .Subscribe(message => OnResponsePeerHandshake(message.ipEndPoint));
@@ -173,7 +175,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
             .TakeUntil(responseReceived)
             .Subscribe(_ => SendPacket(message));
 
-        var timeOut = repeater.Buffer(10).Subscribe(_ => timeOutHandler.SetValueAndForceNotify(message));
+        //var timeOut = repeater.Buffer(10).Subscribe(_ => { timeOutHandler.SetValueAndForceNotify(message); Debug.LogError("[TimeOut] :" + message.packet.Header); }) ;
     }
 
     /// <summary>
@@ -271,9 +273,10 @@ public class NetworkHandler : Singleton<NetworkHandler>
 
             ResponseConnection();
 
+            RequestPeerHandshake(peerIP.GetPublicIPEndPoint());
             RequestPeerHandshake(peerIP.GetLocalIPEndPoint());
         }
-        catch(JsonException e)
+        catch (JsonException e)
         {
             Debug.LogError(e.StackTrace);
         }
@@ -289,7 +292,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
 
     private void OnResponseConnection(UdpPacket packet)
     {
-        Debug.LogError("requested peer connection ready.");
+        Debug.LogError("requested peer connection is now ready.");
 
         try
         {
@@ -300,21 +303,22 @@ public class NetworkHandler : Singleton<NetworkHandler>
             Debug.LogError(e.StackTrace);
         }
 
-        RequestPeerHandshake(peerIP.GetPublicIPEndPoint());
+        //RequestPeerHandshake(peerIP.GetPublicIPEndPoint());
+        //RequestPeerHandshake(peerIP.GetLocalIPEndPoint());
     }
 
-    private void RequestPeerHandshake(IPEndPoint peerIPEndpoint)
+    public void RequestPeerHandshake(IPEndPoint peerIPEndpoint)
     {
         Debug.LogError($"requesting peer handshake to {peerIPEndpoint.Address} : {peerIPEndpoint.Port}");
 
         SendRequest(new UdpMessage(new UdpPacket(Header.request_peer_handshake), peerIPEndpoint), Header.response_peer_handshake);
 
-        var peerTimeOutHandler = timeOutHandler
-            .Where(timedOut => timedOut.packet.GetHeader() == Header.response_peer_handshake)
-            .Zip(Observable.Range(1, 2), (timedOut, number) => number).Take(2);
+        //var peerTimeOutHandler = timeOutHandler
+        //    .Where(timedOut => timedOut.packet.GetHeader() == Header.response_peer_handshake)
+        //    .Zip(Observable.Range(1, 2), (timedOut, number) => number).Take(2);
 
-        peerTimeOutHandler.Where(n => n == 1).Subscribe(_ => OnFailedPeerHandshake());
-        peerTimeOutHandler.Where(n => n > 1).Subscribe(_ => errorHandler.SetValueAndForceNotify(ConnectionError.peer_not_reachable));
+        //peerTimeOutHandler.Where(n => n == 1).Subscribe(_ => OnFailedPeerHandshake());
+        //peerTimeOutHandler.Where(n => n > 1).Subscribe(_ => errorHandler.SetValueAndForceNotify(ConnectionError.peer_not_reachable));
     }
     /// <summary>
     /// On Failed to connect with peer using public IP.<br/>
@@ -345,14 +349,33 @@ public class NetworkHandler : Singleton<NetworkHandler>
     {
         Debug.LogError("received peer handshake response.");
 
-        var pingTimeOut = timeOutHandler.Where(timedOut => timedOut.packet.GetHeader() == Header.pong && timedOut.ipEndPoint == peerIPEndPoint);
-        pingTimeOut.Subscribe(_ => errorHandler.SetValueAndForceNotify(ConnectionError.peer_not_reachable));
-        
-        var repeater = Observable.Timer(TimeSpan.FromMilliseconds(1000)).RepeatUntilDestroy(this).TakeUntil(pingTimeOut);
+        //var pingTimeOut = timeOutHandler.Where(timedOut => timedOut.packet.GetHeader() == Header.pong && timedOut.ipEndPoint == peerIPEndPoint);
+        //pingTimeOut.Subscribe(_ => errorHandler.SetValueAndForceNotify(ConnectionError.peer_not_reachable));
 
-        var pingSender = Observable.TimeInterval(repeater)
-            .TakeUntil(pingTimeOut)
-            .Subscribe(_ => Ping(peerIPEndPoint));
+        //var repeater = Observable.Timer(TimeSpan.FromMilliseconds(1000)).RepeatUntilDestroy(this).TakeUntil(pingTimeOut);
+
+        //var pingSender = Observable.TimeInterval(repeater)
+        //    .TakeUntil(pingTimeOut)
+        //    .Subscribe(_ => Ping(peerIPEndPoint));
+
+        if (coroutine != null)
+            StopCoroutine(coroutine);
+        coroutine = StartCoroutine(CO_Ping(peerIPEndPoint));
+    }
+
+    Coroutine coroutine;
+    private IEnumerator CO_Ping(IPEndPoint endPoint)
+    {
+        Debug.Log("coroutine started");
+
+        IPEndPoint thisEndPoint = endPoint;
+
+        while(peerIP.LocalIP == endPoint.Address.ToString() || peerIP.PublicIP == endPoint.Address.ToString())
+        {
+            yield return new WaitForSeconds(5.0f);
+
+            Ping(thisEndPoint);
+        }
     }
 
     private void Ping(IPEndPoint receiver)
@@ -373,11 +396,16 @@ public class NetworkHandler : Singleton<NetworkHandler>
     {
         Debug.LogError($"pong to {sender}.");
 
-        SendPacket(new UdpMessage(new UdpPacket(Header.pong), sender));
+        SendPacket(new UdpMessage(new UdpPacket(Header.pong, JsonConvert.SerializeObject(myIP)), sender));
     }
 
     private void OnPong(IPEndPoint sender)
     {
         Debug.LogError($"pong from {sender}.");
+    }
+
+    private void RequestDisconnection()
+    {
+        SendPacket(new UdpMessage(new UdpPacket(Header.request_disconnection, JsonConvert.SerializeObject(myIP)), signalingServer));
     }
 }

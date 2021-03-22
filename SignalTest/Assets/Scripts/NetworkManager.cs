@@ -9,24 +9,42 @@ using Newtonsoft.Json;
 
 public class NetworkManager : MonoBehaviour
 {
-    [SerializeField] InputField inputIP = default;
-    [SerializeField] InputField inputPort = default;
-    [SerializeField] Button btnConnect = default;
+    [SerializeField] Button btnServer = default;
+    [SerializeField] Button btnList = default;
 
     [SerializeField] Text txtChat = default;
-
+    
     [SerializeField] InputField inputPeerIP = default;
     [SerializeField] InputField inputPeerPort = default;
     [SerializeField] Button btnPeerConnect = default;
 
-    [SerializeField] Dropdown dropMessage = default;
-    [SerializeField] Button btnSendMessage = default;
+    [SerializeField] InputField inputIP = default;
+    [SerializeField] InputField inputPort = default;
+    [SerializeField] Button btnDirect = default;
 
     private void Start()
     {
-        btnConnect.OnClickAsObservable().Subscribe(_ => OnButtonConnect());
-        btnPeerConnect.OnClickAsObservable().Subscribe(_ => OnButtonPeerConnect());
+        btnServer.OnClickAsObservable().Subscribe(_ => NetworkHandler.Instance.RequestHandshake());
+        btnList.OnClickAsObservable().Subscribe(_ => NetworkHandler.Instance.RequestList());
+        btnPeerConnect.OnClickAsObservable().Subscribe(_ 
+            => NetworkHandler.Instance.RequestConnection(new IPEndPoint(IPAddress.Parse(inputPeerIP.text), int.Parse(inputPeerPort.text))));
+        btnDirect.OnClickAsObservable().Subscribe(_ 
+            => NetworkHandler.Instance.RequestPeerHandshake(new IPEndPoint(IPAddress.Parse(inputIP.text), int.Parse(inputPort.text))));
 
+
+        UdpComm.receivedMessageHandler
+            .AsObservable()
+            .ObserveOnMainThread()
+            .TakeUntilDestroy(this)
+            .Skip(1)
+            .Subscribe(x => ShowMessage($"FROM {x.ipEndPoint.Address} : {x.ipEndPoint.Port}\n{JsonConvert.SerializeObject(x.packet)}"));
+
+        UdpComm.sendingMessageNotifier
+            .AsObservable()
+            .ObserveOnMainThread()
+            .TakeUntilDestroy(this)
+            .Skip(1)
+            .Subscribe(x => ShowMessage(x));
 
         List<Dropdown.OptionData> list = new List<Dropdown.OptionData>();
         foreach (var name in Enum.GetNames(typeof(Header)))
@@ -35,10 +53,6 @@ public class NetworkManager : MonoBehaviour
             data.text = name;
             list.Add(data);
         }
-
-        dropMessage.AddOptions(list);
-
-        //btnSendMessage.OnClickAsObservable().Subscribe(_ => NetworkHandler.SendPacket((Header)dropMessage.value));
 
         //Test();
     }
@@ -60,22 +74,6 @@ public class NetworkManager : MonoBehaviour
         repeater.Buffer(10).Subscribe(_ => Debug.Log("Time out"));
 
         repeater.Zip(Observable.Range(1, 5), (number, counter) => counter).Subscribe(counter => Debug.Log($"number : {counter}"));
-    }
-
-    private void OnButtonConnect()
-    {
-        ///Since receivedMessageHandler call is not made on Unity thread, process involving unity property cause error.
-        UdpComm.receivedMessageHandler
-            .AsObservable()
-            .ObserveOnMainThread()
-            .Subscribe(x => ShowMessage($"{JsonConvert.SerializeObject(x.packet)} from ${x.ipEndPoint.Address} : ${x.ipEndPoint.Port}"));
-
-        NetworkHandler.Instance.RequestHandshake();
-    }
-
-    private void OnButtonPeerConnect()
-    {
-        NetworkHandler.Instance.RequestConnection(new IPEndPoint(IPAddress.Parse(inputPeerIP.text), int.Parse(inputPeerPort.text)));
     }
 
     private void ShowMessage(string message)

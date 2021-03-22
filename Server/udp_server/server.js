@@ -9,7 +9,7 @@ var clientList = new Array();
 class Client{
     constructor(clientIPPair){
         this.IPPair = clientIPPair;
-        this.isAlive = true;
+        this.lifeCount = 3;
     }
 }
 
@@ -32,6 +32,7 @@ class UdpPacket{
 server.on('listening', function () {
     let address = server.address();
     console.log(`server listening on ${address.address} : ${address.port}`);
+    console.log('ver 0.1.2');
 })
 
 server.on('message', function (receivedPacket, remote) {
@@ -126,10 +127,23 @@ server.on('message', function (receivedPacket, remote) {
                 );
                 break;
             case 'pong' :
-                
-                var liveClients = clientList.find(client => (client.IPPair.PublicIP == remotePublicIP) && (client.IPPair.Port == remotePublicPort));
-                if(liveClients != null)
-                    liveClients.isAlive = true;
+                var receivedIPPair = JSON.parse(jsonPacket.Payload);
+                //IPPair
+                //{
+                //  LocalIP : 
+                //  PublicIP :
+                //  Port   :    
+                //}
+                var remoteLocalIP = receivedIPPair.LocalIP;    
+
+                var liveClient = clientList.find(client => (client.IPPair.PublicIP == remotePublicIP) && (client.IPPair.LocalIP == remoteLocalIP) && (client.IPPair.Port == remotePublicPort));
+                if(liveClient != null)
+                    liveClient.lifeCount = 3;
+                break;
+            case 'request_disconnection':
+                clientList = clientList.filter(client => {
+                    return (client.IPPair.PublicIP != remotePublicIP) || (client.IPPair.Port != remotePublicPort); 
+                });
                 break;
             default :
                 server.send(JSON.stringify(
@@ -144,6 +158,7 @@ server.on('message', function (receivedPacket, remote) {
     catch(error)
     {
         console.error(error);
+        server.send(`${remotePublicIP} : ${remotePublicPort}`, remote.port, remote.address);
     }
 })
 
@@ -162,14 +177,14 @@ const interval = setInterval(function ping() {
 
     clientList.forEach(client => {
         console.log(client);
-    })
+    });
 
     clientList = clientList.filter(client => {
-        return client.isAlive == true;
-    })
+        return client.lifeCount > 1;
+    });
 
     clientList.forEach(client => {
-        client.isAlive = false;
+        client.lifeCount -= 1;
         console.log(`${client.IPPair.PublicIP} : ${client.IPPair.LocalIP} : ${client.IPPair.Port}`);
         server.send(
             JSON.stringify(
