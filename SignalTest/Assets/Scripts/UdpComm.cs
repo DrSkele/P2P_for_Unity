@@ -74,38 +74,10 @@ public class UdpMessage
 
 public static class UdpComm
 {
-    static UdpClient _socket;
     /// <summary>
     /// Current device's udp socket.
     /// </summary>
-    static UdpClient socket
-    {
-        get
-        {
-            if (_socket == null)
-            {
-                try
-                {
-                    ///creates udp socket on specified port. 
-                    ///if no variable was entered in UdpClient, random port will be assigned.
-                    _socket = new UdpClient(10000);
-
-                    ///Creates object for receiving callback.
-                    ///Inside callback, socket can be used to continue receiving process.
-                    UdpSenderState sendState = new UdpSenderState();
-                    sendState.socket = _socket;
-
-                    ///Wait for message to be received.
-                    _socket.BeginReceive(OnDataReceived, sendState);
-                }
-                catch
-                {
-                    return null;
-                }
-            }
-            return _socket;
-        }
-    }
+    static UdpClient socket;
 
     static ReactiveProperty<UdpMessage> _receivedMessageHandler;
     /// <summary>
@@ -138,6 +110,23 @@ public static class UdpComm
         }
     }
     
+    public static void InitializeSocket()
+    {
+        if (socket != null)
+            socket.Close();
+        ///creates udp socket on specified port. 
+        ///if no variable was entered in UdpClient, random port will be assigned.
+        socket = new UdpClient(10000);
+
+        ///Creates object for receiving callback.
+        ///Inside callback, socket can be used to continue receiving process.
+        UdpSenderState sendState = new UdpSenderState();
+        sendState.socket = socket;
+
+        ///Wait for message to be received.
+        socket.BeginReceive(OnDataReceived, sendState);
+    }
+
     public static void CloseConnection()
     {
         socket.Close();
@@ -160,8 +149,8 @@ public static class UdpComm
         {
             try
             {
-                socket.Connect(receiver);
-                socket.Send(dataInByte, dataInByte.Length);
+                //socket.Connect(receiver);
+                socket.Send(dataInByte, dataInByte.Length, receiver);
                 sendingMessageNotifier.SetValueAndForceNotify($"SENDING TO {receiver.Address} : {receiver.Port}\n{data} ");
             }
             catch(Exception e)
@@ -184,7 +173,7 @@ public static class UdpComm
     private static void OnDataReceived(IAsyncResult result)
     {
         ///Socket when used for send data on current device.
-        UdpClient socket = ((UdpSenderState)result.AsyncState).socket;
+        //UdpClient socket = ((UdpSenderState)result.AsyncState).socket;
 
         IPEndPoint remoteSource = new IPEndPoint(0, 0);
 

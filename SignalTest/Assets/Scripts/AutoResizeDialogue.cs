@@ -32,7 +32,7 @@ public class AutoResizeDialogue : MonoBehaviour
 
     private void Start()
     {
-        var timer = Observable.Timer(TimeSpan.FromMilliseconds(3000)).RepeatUntilDestroy(this);
+        var timer = Observable.Timer(TimeSpan.FromMilliseconds(1000)).RepeatUntilDestroy(this);
 
         Observable.TimeInterval(timer).TakeUntilDestroy(this).Subscribe(_ => ResizeImageHolder());
     }

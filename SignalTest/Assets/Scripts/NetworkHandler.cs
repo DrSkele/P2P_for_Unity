@@ -87,7 +87,7 @@ public class IPPair
 
     public IPEndPoint GetLocalIPEndPoint()
     {
-        return new IPEndPoint(IPAddress.Parse(LocalIP), Port);
+        return new IPEndPoint(IPAddress.Parse(LocalIP), 10000);
     }
 
     public IPEndPoint GetPublicIPEndPoint()
@@ -125,7 +125,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
 
     private void IncomingMessageListener()
     {
-        var dataStream = UdpComm.receivedMessageHandler
+        var dataStream = UdpComm.receivedMessageHandler.ObserveOnMainThread()
             .DoOnError(e => Debug.LogError(e.StackTrace));
 
         dataStream.Subscribe(message => Debug.LogError(message.packet.Header));
@@ -162,20 +162,24 @@ public class NetworkHandler : Singleton<NetworkHandler>
 
     private void SendRequest(UdpMessage message, Header requestedResponse)
     {
+        SendPacket(message);
+
+        int retryCount = 3;
+
         //Check for incoming message containing response for request.
         var responseReceived = UdpComm.receivedMessageHandler
             .Select(handler => handler.packet.GetHeader())
             .Where(header => header == requestedResponse);
 
-        var repeater = Observable.Timer(TimeSpan.FromMilliseconds(300)).Repeat().Take(10);
+        var repeater = Observable.Timer(TimeSpan.FromMilliseconds(1000)).Repeat().TakeUntil(responseReceived).Take(retryCount);
 
         // If the receiver doesn't respond during TimeInterval, sends the packet again.
         // When the receiver responds, 'responseReceived' event is called, thus, OnCompleted will be called and the subscription will end. 
-        Observable.TimeInterval(repeater)
-            .TakeUntil(responseReceived)
-            .Subscribe(_ => SendPacket(message));
+        Observable.TimeInterval(repeater).Subscribe(_ => SendPacket(message));
 
-        //var timeOut = repeater.Buffer(10).Subscribe(_ => { timeOutHandler.SetValueAndForceNotify(message); Debug.LogError("[TimeOut] :" + message.packet.Header); }) ;
+        var timeOut = repeater.Zip(Observable.Range(1, retryCount), (time, number) => number)
+            .Where(n => n == retryCount)
+            .Subscribe(_ => { timeOutHandler.SetValueAndForceNotify(message); Debug.LogError("[TimeOut] :" + message.packet.Header); }) ;
     }
 
     /// <summary>
@@ -184,6 +188,8 @@ public class NetworkHandler : Singleton<NetworkHandler>
     public void RequestHandshake()
     {
         Debug.LogError("requesting handshake.");
+
+        UdpComm.InitializeSocket();
 
         IPPair thisIP = new IPPair(UdpComm.GetLocalAddress(), null, 0);
 
@@ -273,7 +279,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
 
             ResponseConnection();
 
-            RequestPeerHandshake(peerIP.GetPublicIPEndPoint());
+            //RequestPeerHandshake(peerIP.GetPublicIPEndPoint());
             RequestPeerHandshake(peerIP.GetLocalIPEndPoint());
         }
         catch (JsonException e)
@@ -303,13 +309,17 @@ public class NetworkHandler : Singleton<NetworkHandler>
             Debug.LogError(e.StackTrace);
         }
 
+        UdpComm.InitializeSocket();
+
         //RequestPeerHandshake(peerIP.GetPublicIPEndPoint());
-        //RequestPeerHandshake(peerIP.GetLocalIPEndPoint());
+        RequestPeerHandshake(peerIP.GetLocalIPEndPoint());
     }
 
     public void RequestPeerHandshake(IPEndPoint peerIPEndpoint)
     {
         Debug.LogError($"requesting peer handshake to {peerIPEndpoint.Address} : {peerIPEndpoint.Port}");
+
+        UdpComm.InitializeSocket();
 
         SendRequest(new UdpMessage(new UdpPacket(Header.request_peer_handshake), peerIPEndpoint), Header.response_peer_handshake);
 
@@ -358,9 +368,16 @@ public class NetworkHandler : Singleton<NetworkHandler>
         //    .TakeUntil(pingTimeOut)
         //    .Subscribe(_ => Ping(peerIPEndPoint));
 
-        if (coroutine != null)
-            StopCoroutine(coroutine);
-        coroutine = StartCoroutine(CO_Ping(peerIPEndPoint));
+        try
+        {
+            if (coroutine != null)
+                StopCoroutine(coroutine);
+            coroutine = StartCoroutine(CO_Ping(peerIPEndPoint));
+        }
+        catch(Exception e)
+        {
+            Debug.LogError(e.StackTrace);
+        }
     }
 
     Coroutine coroutine;
