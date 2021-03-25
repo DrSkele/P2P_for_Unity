@@ -9,17 +9,6 @@ using UniRx;
 using System.Net.NetworkInformation;
 using System.Linq;
 using Newtonsoft.Json;
-/// <summary>
-/// Object used for : <see cref="UdpClient.BeginReceive(System.AsyncCallback, object)"/>
-/// Object passed will be returned as parameter with AsyncCallback.
-/// </summary>
-public struct UdpSenderState
-{
-    /// <summary>
-    /// Current device's udp socket used to send message.
-    /// </summary>
-    public UdpClient socket;
-}
 
 public class UdpPacket
 {
@@ -74,10 +63,26 @@ public class UdpMessage
 
 public static class UdpComm
 {
+    static UdpClient _socket;
     /// <summary>
     /// Current device's udp socket.
     /// </summary>
-    static UdpClient socket;
+    static UdpClient socket
+    {
+        get
+        {
+            if (_socket == null)
+            {
+                ///creates udp socket on specified port. 
+                ///if no variable was entered in UdpClient, random port will be assigned.
+                _socket = new UdpClient(10000);
+
+                ///Wait for message to be received.
+                _socket.BeginReceive(OnDataReceived, _socket);
+            }
+            return _socket;
+        }
+    }
 
     static ReactiveProperty<UdpMessage> _receivedMessageHandler;
     /// <summary>
@@ -110,23 +115,6 @@ public static class UdpComm
         }
     }
     
-    public static void InitializeSocket()
-    {
-        if (socket != null)
-            socket.Close();
-        ///creates udp socket on specified port. 
-        ///if no variable was entered in UdpClient, random port will be assigned.
-        socket = new UdpClient(10000);
-
-        ///Creates object for receiving callback.
-        ///Inside callback, socket can be used to continue receiving process.
-        UdpSenderState sendState = new UdpSenderState();
-        sendState.socket = socket;
-
-        ///Wait for message to be received.
-        socket.BeginReceive(OnDataReceived, sendState);
-    }
-
     public static void CloseConnection()
     {
         socket.Close();
@@ -143,7 +131,7 @@ public static class UdpComm
     {
         byte[] dataInByte = Encoding.ASCII.GetBytes(data);
 
-        Debug.Log($"Sending Data : {data}");
+        //Debug.Log($"Sending Data : {data}");
 
         if (socket != null)
         {
@@ -172,31 +160,37 @@ public static class UdpComm
     /// Get object by result.AsyncState.</param>
     private static void OnDataReceived(IAsyncResult result)
     {
-        ///Socket when used for send data on current device.
-        //UdpClient socket = ((UdpSenderState)result.AsyncState).socket;
-
-        IPEndPoint remoteSource = new IPEndPoint(0, 0);
-
-        string receivedData = Encoding.ASCII.GetString(socket.EndReceive(result, ref remoteSource));
-
-        Debug.Log($"Received Data : {receivedData}");
-
-        UdpPacket receivedPacket;
-
+        if (socket.Client == null)
+            return;
         try
         {
-            receivedPacket = JsonConvert.DeserializeObject<UdpPacket>(receivedData);
+            IPEndPoint remoteSource = new IPEndPoint(0, 0);
+
+            string receivedData = Encoding.ASCII.GetString(socket.EndReceive(result, ref remoteSource));
+
+            //Debug.Log($"Received Data : {receivedData}");
+
+            UdpPacket receivedPacket;
+
+            try
+            {
+                receivedPacket = JsonConvert.DeserializeObject<UdpPacket>(receivedData);
+            }
+            catch (JsonException e)
+            {
+                Debug.LogError(e);
+                receivedPacket = new UdpPacket(Header.none, receivedData);
+            }
+
+            UdpMessage receivedMessage = new UdpMessage(receivedPacket, remoteSource);
+
+            receivedMessageHandler.SetValueAndForceNotify(receivedMessage);
         }
-        catch(JsonException e)
+        catch(Exception e)
         {
-            Debug.Log(e);
-            receivedPacket = new UdpPacket(Header.none, receivedData);
+            //Debug.LogError(e.StackTrace);
         }
-
-        UdpMessage receivedMessage = new UdpMessage(receivedPacket, remoteSource);
-
-        receivedMessageHandler.SetValueAndForceNotify(receivedMessage);
-        socket.BeginReceive(OnDataReceived, result.AsyncState);
+        socket.BeginReceive(OnDataReceived, result);
     }
 
     public static IPAddress GetLocalAddress()

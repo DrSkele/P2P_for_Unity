@@ -27,16 +27,13 @@ public class NetworkManager : MonoBehaviour
 
     private void Start()
     {
-        UdpComm.InitializeSocket();
-
         btnServer.OnClickAsObservable().Subscribe(_ => NetworkHandler.Instance.RequestHandshake());
         btnList.OnClickAsObservable().Subscribe(_ => NetworkHandler.Instance.RequestList());
         btnPeerConnect.OnClickAsObservable().Subscribe(_ 
             => NetworkHandler.Instance.RequestConnection(new IPEndPoint(IPAddress.Parse(inputPeerIP.text), int.Parse(inputPeerPort.text))));
-        btnDirect.OnClickAsObservable().Subscribe(_ 
-            => UdpComm.InitializeSocket());
+        btnDirect.OnClickAsObservable().Subscribe();
         btnSend.OnClickAsObservable().Subscribe(_
-            => UdpComm.SendData(inputChat.text, new IPEndPoint(IPAddress.Parse(inputIP.text), int.Parse(inputPort.text))));
+            => NetworkHandler.Instance.SendCustomMessage(inputChat.text));
 
         UdpComm.receivedMessageHandler
             .AsObservable()
@@ -83,7 +80,7 @@ public class NetworkManager : MonoBehaviour
 
     private void ShowMessage(string message)
     {
-        Debug.LogError(message);
+        //Debug.LogError(message);
         txtChat.text = txtChat.text + message + "\n";
     }
 }

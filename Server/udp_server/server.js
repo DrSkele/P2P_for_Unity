@@ -140,7 +140,7 @@ server.on('message', function (receivedPacket, remote) {
                 if(liveClient != null)
                     liveClient.lifeCount = 3;
                 break;
-            case 'request_disconnection':
+            case 'notify_disconnection':
                 clientList = clientList.filter(client => {
                     return (client.IPPair.PublicIP != remotePublicIP) || (client.IPPair.Port != remotePublicPort); 
                 });
