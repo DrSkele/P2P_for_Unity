@@ -5,6 +5,7 @@ using System;
 using System.Net;
 using UniRx;
 using Newtonsoft.Json;
+using System.Linq;
 
 public enum Header {
     none,
@@ -82,6 +83,7 @@ public enum ConnectionError
 public enum ConnectionState
 {
     disconnected,
+    server,
     publicPeer,
     localPeer
 }
@@ -132,7 +134,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
     /// <summary>
     /// IP address of current device.
     /// </summary>
-    IPPair myIP;
+    public IPPair myIP { get; private set; }
     /// <summary>
     /// List given by signaling server.
     /// </summary>
@@ -140,11 +142,11 @@ public class NetworkHandler : Singleton<NetworkHandler>
     /// <summary>
     /// IP address of the peer connected to.
     /// </summary>
-    IPPair peerIP = null;
+    public IPPair peerIP { get; private set; }
     /// <summary>
     /// State of peer connection.
     /// </summary>
-    ConnectionState connectionState = ConnectionState.disconnected;
+    public ConnectionState connectionState { get; private set; }
     /// <summary>
     /// Counter for peer connection ping.<br/>
     /// Reduces when sending ping, and restores fully when receiving pong.
@@ -163,13 +165,12 @@ public class NetworkHandler : Singleton<NetworkHandler>
     /// <summary>
     /// Observable for payload of incoming custom message.
     /// </summary>
-    public static IObservable<string> incomingCustomMessage;
+    public ReactiveProperty<string> incomingCustomMessage = new ReactiveProperty<string>("");
     /// <summary>
     /// Creates ping periodically.<br/>
     /// Do not create multiple ping.
     /// </summary>
     static IDisposable pinger;
-
 
     private void Start()
     {
@@ -219,8 +220,8 @@ public class NetworkHandler : Singleton<NetworkHandler>
         dataStream.Where(message => message.packet.GetHeader() == Header.notify_disconnection)
             .Subscribe(message => OnRequestDisconnection());
 
-        incomingCustomMessage = dataStream.Where(message => message.packet.GetHeader() == Header.custom_message)
-                                    .Select(message => message.packet.Payload);
+        dataStream.Where(message => message.packet.GetHeader() == Header.custom_message)
+            .Select(message => message.packet.Payload).Subscribe(payload => incomingCustomMessage.Value = payload);
     }
     /// <summary>
     /// Subscribes listener to timed out messages.
@@ -250,7 +251,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
         SendPacket(message);
 
         int retryCount = 3;
-        int waitTime = 1000;
+        int waitTime = 3000;
 
         //Check for incoming message containing corresponding response for request.
         var responseReceived = UdpComm.receivedMessageHandler
@@ -276,7 +277,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
     }
     public void SendCustomMessage(string customMessage)
     {
-        if (connectionState == ConnectionState.disconnected)
+        if (connectionState != ConnectionState.publicPeer && connectionState != ConnectionState.localPeer)
             return;
 
         IPEndPoint endPoint = (connectionState == ConnectionState.publicPeer) ? peerIP.GetPublicIPEndPoint() : peerIP.GetLocalIPEndPoint();
@@ -309,6 +310,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
 
         try
         {
+            connectionState = ConnectionState.server;
             myIP = JsonConvert.DeserializeObject<IPPair>(packet.Payload);
             RequestList();
         }
@@ -424,7 +426,6 @@ public class NetworkHandler : Singleton<NetworkHandler>
     {
         Debug.LogWarning("requesting peer handshake on public ip.");
 
-        connectionState = ConnectionState.publicPeer;
         RequestPeerHandshake(peerIP.GetPublicIPEndPoint());
 
         //If attempt fails, try again with local ip.
@@ -439,7 +440,6 @@ public class NetworkHandler : Singleton<NetworkHandler>
     {
         Debug.LogWarning("requesting peer handshake on local ip.");
 
-        connectionState = ConnectionState.localPeer;
         RequestPeerHandshake(peerIP.GetLocalIPEndPoint());
 
         // If attempt fails, declare that peer handshake has failed.
@@ -454,6 +454,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
     {
         Debug.LogWarning("peer handshake failed.");
         connectionState = ConnectionState.disconnected;
+        errorHandler.SetValueAndForceNotify(ConnectionError.peer_not_reachable);
     }
     /// <summary>
     /// Sends request to peer directly by given IP end point.<br/>
@@ -497,6 +498,8 @@ public class NetworkHandler : Singleton<NetworkHandler>
     {
         Debug.LogWarning("received peer handshake response.");
 
+        connectionState = (peerIPEndPoint == peerIP.GetPublicIPEndPoint()) ? ConnectionState.publicPeer : ConnectionState.localPeer;
+
         int pingTime = 10000;
 
         ResetPeerLifeCount();
@@ -512,6 +515,7 @@ public class NetworkHandler : Singleton<NetworkHandler>
 
         //sends ping until peerLifeCount drops to 0.
         pinger = Observable.TimeInterval(timer).ObserveOnMainThread()
+            .TakeUntilDestroy(this)
             .TakeWhile(_ => (0 <= peerLifeCount))
             .Subscribe(_ => Ping(peerIPEndPoint), () => DisconnectPeer());
     }
@@ -595,5 +599,10 @@ public class NetworkHandler : Singleton<NetworkHandler>
         Debug.LogWarning("peer connection stable.");
 
         peerLifeCount = 3;
+    }
+
+    public IPEndPoint[] GetPeerList()
+    {
+        return peerIPList.Select(list => list.GetPublicIPEndPoint()).ToArray();
     }
 }

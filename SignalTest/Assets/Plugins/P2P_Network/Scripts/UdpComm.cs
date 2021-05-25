@@ -129,7 +129,7 @@ public static class UdpComm
     /// <remarks>Important : "<see cref="SetTargetEndPoint(string, int)"/>" Must be called before sending message</remarks>
     public static void SendData(string data, IPEndPoint receiver)
     {
-        byte[] dataInByte = Encoding.ASCII.GetBytes(data);
+        byte[] dataInByte = Encoding.UTF8.GetBytes(data);
 
         //Debug.Log($"Sending Data : {data}");
 
@@ -166,7 +166,7 @@ public static class UdpComm
         {
             IPEndPoint remoteSource = new IPEndPoint(0, 0);
 
-            string receivedData = Encoding.ASCII.GetString(socket.EndReceive(result, ref remoteSource));
+            string receivedData = Encoding.UTF8.GetString(socket.EndReceive(result, ref remoteSource));
 
             //Debug.Log($"Received Data : {receivedData}");
 

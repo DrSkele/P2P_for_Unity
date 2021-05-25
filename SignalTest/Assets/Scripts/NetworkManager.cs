@@ -31,7 +31,8 @@ public class NetworkManager : MonoBehaviour
         btnList.OnClickAsObservable().Subscribe(_ => NetworkHandler.Instance.RequestList());
         btnPeerConnect.OnClickAsObservable().Subscribe(_ 
             => NetworkHandler.Instance.RequestConnection(new IPEndPoint(IPAddress.Parse(inputPeerIP.text), int.Parse(inputPeerPort.text))));
-        btnDirect.OnClickAsObservable().Subscribe();
+        btnDirect.OnClickAsObservable().Subscribe(_
+            => UdpComm.SendData(inputChat.text, new IPEndPoint(IPAddress.Parse(inputIP.text), int.Parse(inputPort.text))));
         btnSend.OnClickAsObservable().Subscribe(_
             => NetworkHandler.Instance.SendCustomMessage(inputChat.text));
 
