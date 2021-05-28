@@ -58,7 +58,43 @@ public class NetworkManager : MonoBehaviour
             list.Add(data);
         }
 
-        //Test();
+        TimerObservable(3, 1f);
+    }
+
+    private void TimerFromCoroutine(int retryCount, float waitTime)
+    {
+        var click = Observable.EveryUpdate().Where(_ => Input.GetMouseButtonDown(0));
+
+        var repeater = Observable.FromCoroutine<int>(observer => ResendCounter(observer, retryCount, waitTime)).TakeUntil(click);
+        
+        repeater.Subscribe(timer => Debug.Log(timer), () => Debug.Log("complete"));
+        repeater.Where(timer => timer == retryCount).Subscribe(timer => Debug.Log("end"));
+
+        IEnumerator ResendCounter(IObserver<int> observer, int retry, float wait)
+        {
+            int count = 0;
+            while (count < retryCount)
+            {
+                observer.OnNext(count--);
+                yield return new WaitForSeconds(wait);
+            }
+            observer.OnNext(retryCount);
+            observer.OnCompleted();
+        }
+    }
+
+    private void TimerObservable(int retryCount, float waitTime)
+    {
+        var click = Observable.EveryUpdate().Where(_ => Input.GetMouseButtonDown(0));
+
+        var repeater = Observable.Timer(TimeSpan.FromSeconds(waitTime)).Repeat()
+           .Take(retryCount)
+           .TakeUntil(click)
+           .Zip(Observable.Range(1, retryCount), (time, number) => number);
+
+        repeater.Subscribe(count => Debug.Log(count), () => Debug.Log("complete"));
+        repeater.Where(count => count == retryCount).Subscribe(count => Debug.Log("end"));
+        repeater.Buffer(retryCount).Subscribe(count => Debug.Log("buffer"));
     }
 
     private void Test()
