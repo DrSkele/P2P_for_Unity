@@ -6,6 +6,7 @@ using System.Net;
 using UniRx;
 using System;
 using Newtonsoft.Json;
+using P2PNetworking;
 
 public class NetworkManager : MonoBehaviour
 {
@@ -32,18 +33,18 @@ public class NetworkManager : MonoBehaviour
         btnPeerConnect.OnClickAsObservable().Subscribe(_ 
             => NetworkHandler.Instance.RequestConnection(new IPEndPoint(IPAddress.Parse(inputPeerIP.text), int.Parse(inputPeerPort.text))));
         btnDirect.OnClickAsObservable().Subscribe(_
-            => UdpComm.SendData(inputChat.text, new IPEndPoint(IPAddress.Parse(inputIP.text), int.Parse(inputPort.text))));
+            => UdpNetwork.SendData(inputChat.text, new IPEndPoint(IPAddress.Parse(inputIP.text), int.Parse(inputPort.text))));
         btnSend.OnClickAsObservable().Subscribe(_
             => NetworkHandler.Instance.SendCustomMessage(inputChat.text));
 
-        UdpComm.receivedMessageHandler
+        UdpNetwork.receivedMessageHandler
             .AsObservable()
             .ObserveOnMainThread()
             .TakeUntilDestroy(this)
             .Skip(1)
-            .Subscribe(x => ShowMessage($"FROM {x.ipEndPoint.Address} : {x.ipEndPoint.Port}\n{JsonConvert.SerializeObject(x.packet)}"));
+            .Subscribe(x => ShowMessage($"FROM {x.Item2.Address} : {x.Item2.Port}\n{JsonConvert.SerializeObject(x.Item1)}"));
 
-        UdpComm.sendingMessageNotifier
+        UdpNetwork.sendingMessageNotifier
             .AsObservable()
             .ObserveOnMainThread()
             .TakeUntilDestroy(this)
@@ -59,6 +60,8 @@ public class NetworkManager : MonoBehaviour
         }
 
         TimerObservable(3, 1f);
+
+        //NetworkHandler.Instance.RequestHandshake();
     }
 
     private void TimerFromCoroutine(int retryCount, float waitTime)
@@ -87,14 +90,29 @@ public class NetworkManager : MonoBehaviour
     {
         var click = Observable.EveryUpdate().Where(_ => Input.GetMouseButtonDown(0));
 
-        var repeater = Observable.Timer(TimeSpan.FromSeconds(waitTime)).Repeat()
-           .Take(retryCount)
+        var repeater = Observable.Timer(TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(waitTime))
            .TakeUntil(click)
            .Zip(Observable.Range(1, retryCount), (time, number) => number);
 
-        repeater.Subscribe(count => Debug.Log(count), () => Debug.Log("complete"));
+        repeater.Subscribe(_ => Debug.Log("call"), () => Debug.Log("complete"));
         repeater.Where(count => count == retryCount).Subscribe(count => Debug.Log("end"));
         repeater.Buffer(retryCount).Subscribe(count => Debug.Log("buffer"));
+    }
+
+    private void TimerCreate(int retryCount, float waitTime)
+    {
+        Observable.Create<int>(observer =>
+        {
+            int count = 0;
+            while (count < retryCount)
+            {
+                observer.OnNext(count--);
+            }
+            observer.OnNext(retryCount);
+            observer.OnCompleted();
+
+            return Disposable.Create(() => { });
+        });
     }
 
     private void Test()
