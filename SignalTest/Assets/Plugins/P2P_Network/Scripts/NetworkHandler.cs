@@ -26,7 +26,7 @@ namespace P2PNetworking
         /// <summary>
         /// Seconds to wait until sending request again.
         /// </summary>
-        const float waitTime = 0.5f;
+        const float waitTime = 1f;
         /// <summary>
         /// Interval between every ping.
         /// </summary>
@@ -200,7 +200,7 @@ namespace P2PNetworking
         /// <summary>
         /// Sends request and waits for response message.<br/>
         /// If response doesn't come within specified time, sends request again.<br/>
-        /// If there's no response even after sending multiple requests, emits TIMEOUT through <see cref="requestTimeOutHandler"/>
+        /// If there's no response even after sending multiple requests, emits TIMEOUT through [<see cref="requestTimeOutHandler"/>]
         /// </summary>
         /// <param name="message">Message containing request and end point sending to.</param>
         /// <param name="requestedResponse">Header to wait for after sending message.</param>
@@ -213,7 +213,7 @@ namespace P2PNetworking
                 .Select(handler => handler.packet.GetHeader())
                 .Where(header => header == requestedResponse);
 
-            var repeater = Observable.Timer(TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(waitTime))
+            var repeater = Observable.Timer(TimeSpan.FromSeconds(waitTime), TimeSpan.FromSeconds(waitTime))
                 .TakeUntil(responseReceived).Take(retryCount)
                 .Zip(Observable.Range(1, retryCount), (time, number) => number);
 
@@ -228,6 +228,9 @@ namespace P2PNetworking
             repeater.Where(n => n == retryCount).Subscribe(_ => requestTimeOutHandler.Value = message);
             //Tips : Buffer(n) emits event even if received event is less than required 'n', but Zip+Where doesn't
         }
+        /// <summary>
+        /// Sends customized string to peer.
+        /// </summary>
         public void SendCustomMessage(string customMessage)
         {
             if (networkConnectionState.Value != ConnectionState.publicPeer && networkConnectionState.Value != ConnectionState.localPeer)
@@ -348,7 +351,7 @@ namespace P2PNetworking
             }
         }
         /// <summary>
-        /// Sends response for <see cref="RequestConnection(IPEndPoint)"/>.
+        /// Sends response for [<see cref="RequestConnection(IPEndPoint)"/>].
         /// </summary>
         private void ResponseConnection()
         {
@@ -358,7 +361,7 @@ namespace P2PNetworking
             SendPacket(new Message(packet, signalingServer));
         }
         /// <summary>
-        /// Response for <see cref="RequestConnection(IPEndPoint)"/> from peer through signaling server.<br/>
+        /// Response for [<see cref="RequestConnection(IPEndPoint)"/>] from peer through signaling server.<br/>
         /// Attempt the connection to peer, now that response have been received.
         /// </summary>
         private void OnResponseConnection(DataPacket packet)
@@ -448,7 +451,7 @@ namespace P2PNetworking
             SendPacket(new Message(new DataPacket(Header.response_peer_handshake), endPoint));
         }
         /// <summary>
-        /// Response for <see cref="RequestPeerHandshake(IPEndPoint)"/> from the peer.<br/>
+        /// Response for [<see cref="RequestPeerHandshake(IPEndPoint)"/>] from the peer.<br/>
         /// Receiving this message means that peer to peer connection has been successfully made.
         /// To maintain the connection, pings the peer periodically.
         /// </summary>
@@ -473,7 +476,7 @@ namespace P2PNetworking
             pinger = timer.ObserveOnMainThread().TakeWhile(_ => (peerLifeCount >= 0))
                 .Subscribe(_ => Ping(peerIPEndPoint), 
                 () => {
-                    DisconnectPeer();
+                    ClearPeer();
                     networkErrorHandler.SetValueAndForceNotify(ConnectionError.ping_out);
                 });
         }
@@ -534,7 +537,10 @@ namespace P2PNetworking
                 }
             }
         }
-
+        /// <summary>
+        /// Send message that this device is going to cut communication to other communicating devices.
+        /// </summary>
+        /// <param name="endPoint">Destination sending message to</param>
         private void NotifyDisconnection(IPEndPoint endPoint)
         {
             SendPacket(new Message(new DataPacket(Header.notify_disconnection, JsonConvert.SerializeObject(myIP)), endPoint));
@@ -546,15 +552,19 @@ namespace P2PNetworking
         {
             Debug.LogWarning("peer disconnection requested.");
 
-            DisconnectPeer();
+            ClearPeer();
         }
-
-        private void DisconnectPeer()
+        /// <summary>
+        /// Clear peer informations.
+        /// </summary>
+        private void ClearPeer()
         {
             peerIP = null;
             networkConnectionState.Value = ConnectionState.disconnected;
         }
-
+        /// <summary>
+        /// Resets peer life count to default number when communication is successful.
+        /// </summary>
         private void ResetPeerLifeCount()
         {
             Debug.LogWarning("peer connection stable.");

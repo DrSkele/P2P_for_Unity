@@ -129,7 +129,10 @@ namespace P2PNetworking
             }
             socket.BeginReceive(OnDataReceived, result);
         }
-
+        /// <summary>
+        /// Gets local area IP address.
+        /// </summary>
+        /// <returns></returns>
         public static IPAddress GetLocalAddress()
         {
             var host = Dns.GetHostEntry(Dns.GetHostName());

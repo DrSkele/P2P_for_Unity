@@ -90,6 +90,8 @@ public class NetworkManager : MonoBehaviour
     {
         var click = Observable.EveryUpdate().Where(_ => Input.GetMouseButtonDown(0));
 
+        Debug.Log("begin");
+
         var repeater = Observable.Timer(TimeSpan.FromSeconds(0), TimeSpan.FromSeconds(waitTime))
            .TakeUntil(click)
            .Zip(Observable.Range(1, retryCount), (time, number) => number);
